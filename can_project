@@ -1,0 +1,393 @@
+//CAN TX MAIN PROGRAM
+
+#include <LPC21xx.H>
+#include "header.h"
+#include "can_tx_node.c"
+#include "delay.h"	
+#include "lcdheader.h"
+#include "cg_ram.c"
+int main()
+{
+	LCD_INIT(); 
+	LCD_CMD(0X80);
+	LCD_STR("    BCM IN   ");
+	LCD_CMD(0XC0);
+	LCD_STR("  AUTOMOBILES  ");
+	delay_s(5);
+LCD_CMD(0X01);
+	while(1)
+	{
+	CAN2_MSG m1,m2;
+	can2_init();
+	if((IOPIN0&SW1)==0)
+	{
+		m1.id=0x10;
+		m1.rtr=0;//data frame	
+	m1.dlc=4;
+	m1.byteA=0xAAAAAAAA;
+	m1.byteB=0;		
+		can2_tx(m1);//data-frame
+		delay_ms(2000);
+	LCD_INIT(); 
+	cgram_write_1(8);
+	 	LCD_CMD(0X80);
+	 	LCD_DATA(0);
+	}
+	else if((IOPIN0&SW2)==0)
+	{
+		m1.id=0x20;
+		m1.rtr=0;//data frame
+		m1.dlc=4;
+		m1.byteA=0xBBBBBBBB;
+		m1.byteB=0;
+		can2_tx(m1);//data-frame
+		delay_ms(2000);
+		LCD_INIT();
+	 	cgram_write_2(8);
+	 	LCD_CMD(0X80);
+	 	LCD_DATA(0);
+	}
+	else if((IOPIN0&SW3)==0)
+	{
+		m1.id=0x30;
+		m1.rtr=0;//data frame
+	m1.dlc=4;
+	m1.byteA=0xCCCCCCCC;
+	m1.byteB=0;
+		can2_tx(m1);//data-frame
+		delay_ms(2000);
+		LCD_CMD(0X80);
+		LCD_STR("DC MOTOR ON");
+	}
+	}
+}
+//**********************************************************************************************************
+//CAN NODE TX PROGRAM
+#include <LPC21xx.H>
+#include "header.h"
+void can2_init(void)
+{
+	PINSEL1|=0x00014000;//P0.23-->TD2 & P0.24-->RD2
+	VPBDIV=1; //PCLK=60MHz
+	C2MOD=0x1; //CAN2 into Reset  Mode 
+	AFMR=0x2; //accept all receiving messages(data/remote)
+	C2BTR=0x001C001D; //B125Kbps @ PLCK=60MH
+	C2MOD=0x0; //CAN1 into Normal Mode
+}
+void can2_tx(CAN2_MSG m1)
+{
+C2TID1=m1.id;
+C2TFI1=(m1.dlc<<16);	
+	if(m1.rtr==0) //if data frame
+	{
+		C2TFI1&=~(1<<30);//RTR=0
+		C2TDA1=m1.byteA; //lower 4bytes of data
+		C2TDB1=m1.byteB; //upper 4bytes of data
+	}
+	else
+{
+		C2TFI1|=(1<<30); //RTR=1
+	}
+	C2CMR=(1<<0)|(1<<5);//Start Xmission & select Tx Buf1
+while((C2GSR&(1<<3))==0);//wait for data Xmission.
+}
+//********************************************************************************************************************
+
+//CG RAM
+#include "header.h"
+ unsigned char cgram1[]={0x10,0x18,0x1c,0x1e,0x1c,0x18,0x10,0x00};
+ unsigned char cgram2[]={0x01,0x03,0x07,0x0f,0x07,0x03,0x01,0x00};
+ int i;
+ void cgram_write_1(char nbytes)
+ {
+	 char k;
+	 LCD_CMD(0X40);
+	 for(k=0;k<nbytes;k++)
+	 LCD_DATA(cgram1[k]);
+ }
+ void cgram_write_2(char nbytes)
+ {
+	 char k;
+	 LCD_CMD(0X40);
+	 for(k=0;k<nbytes;k++)
+	 LCD_DATA(cgram2[k]);
+ }
+//**********************************************************************************************************
+
+//LCD HEADER
+#include<LPC21XX.H>
+#define LCD_D 0xf<<20
+#define RS 1<<17
+#define RW 1<<18
+#define E 1<<19
+ void LCD_INIT(void);
+ void LCD_CMD(unsigned char);
+ void LCD_DATA(unsigned char);
+ void LCD_STR(unsigned char*);
+ void LCD_STR(unsigned char*p)
+ 
+{
+	 while(*p)
+	 {
+		 LCD_DATA(*p++);	 
+	 }
+ }
+ void LCD_INIT(void)
+{
+IODIR1=LCD_D|RS|RW|E;
+LCD_CMD(0X01);
+LCD_CMD(0X02);
+LCD_CMD(0X0C);
+LCD_CMD(0X28);
+LCD_CMD(0X80);
+}
+
+void LCD_CMD(unsigned char cmd)
+{
+IOCLR1=LCD_D;
+IOSET1=(cmd & 0xf0)<<16;
+IOCLR1=RS;
+IOCLR1=RW;
+IOSET1=E;
+delay_ms(2);
+IOCLR1=E;
+
+IOCLR1=LCD_D;
+IOSET1=(cmd & 0x0f)<<20;
+IOCLR1=RS;
+IOCLR1=RW;
+IOSET1=E;
+delay_ms(2);
+IOCLR1=E;
+}
+
+void LCD_DATA( unsigned char d)
+{
+IOCLR1=LCD_D;
+IOSET1=(d & 0xf0)<<16;
+IOSET1=RS;
+IOSET1=E;
+delay_ms(2);
+IOCLR1=E;
+
+IOCLR1=LCD_D;
+IOSET1=(d & 0X0f)<<20;
+IOSET1=RS;
+IOSET1=E;
+delay_ms(2);
+IOCLR1=E;
+}
+//**********************************************************************************************************
+//HEADER PROGRAM
+#ifndef __HEADER_H_
+#define __HEADER_H_
+typedef unsigned int u32;
+typedef 	signed int s32;
+typedef unsigned char u8;
+typedef 	signed char s8;
+typedef unsigned short int u16;
+typedef   signed short int s16;
+typedef struct CAN2
+{
+	u32 id;
+u32 rtr;
+	u32 dlc;
+	u32 byteA;
+	u32 byteB;
+}CAN2_MSG;
+void delay_sec(u32 sec);
+void uart0_init(u32 baud);
+void uart0_tx(u8 ch);
+u8 uart0_rx(void);
+void uart0_string(s8 *s);
+void uart0_integer(s32 n);
+void can2_init(void);
+void can2_tx(CAN2_MSG m1);
+void can2_rx(CAN2_MSG *m1);
+#define SW1 1<<14
+#define SW2 1<<15
+#define SW3 1<<16
+#endif
+
+
+//***************************************************************************************************************************
+
+//DELAY HEADER
+#include<LPC21XX.H>
+void delay_s(int seconds)
+{
+T0PR=15000000-1;
+T0TCR=0X01;
+while(T0TC<seconds);
+T0TCR=0X03;
+T0TCR=0X00;
+}
+void delay_ms(int ms)
+{
+T0PR=15000-1;
+T0TCR=0X01;
+while(T0TC<ms);
+T0TCR=0X02;
+T0TCR=0X00;
+}
+void delay_mis( int mis)
+{
+T0PR=15-1;
+T0TCR=0X01;
+while(T0TC<mis);
+T0TCR=0X03;
+T0TCR=0X00;
+}
+
+//***********************************************************************************************************************
+//***********************************************************************************************************************
+
+
+
+//CAN RX NODE PROGRAM
+//CAN RX MAIN
+#include "header.h"
+#include "can_rx_uart.c"
+#include "can_rx.c"
+int main()
+{	
+	CAN2_MSG m1;
+	can2_init();
+	LCD_INIT();
+	uart0_init(115200);
+	uart0_tx_string("nodeB TESTING CAN\r\n");
+	while(1)
+{		
+		can2_rx(&m1);		
+		if(m1.rtr==0){
+		uart0_tx_string("nodeB: DATA-FRAME is received\r\n");
+		uart0_tx_hex(m1.id);
+		uart0_tx(' ');
+uart0_tx_hex(m1.dlc);
+	uart0_tx(' ');
+		uart0_tx_hex(m1.byteA);
+		uart0_tx(' ');
+		uart0_tx_hex(m1.byteB);
+		uart0_tx_string("\r\n");
+	}	
+		else
+{
+		uart0_tx_string("nodeB: REMOTE-FRAME is received\r\n");
+		uart0_tx_hex(m1.id);
+		uart0_tx(' ');
+		uart0_tx_hex(m1.dlc);
+	uart0_tx(' ');
+	uart0_tx_string("\r\n");
+		}	
+	}
+}
+//********************************************************************************************************************
+
+//CAN RX NODE
+#include <LPC21xx.H>
+#include "header.h"
+#include "led_blink.c"
+void can2_init(void)
+{
+	PINSEL1|=0x00014000;//P0.23-->TD2 & P0.24-->RD2
+	VPBDIV=1; //PCLK=60MHz
+	C2MOD=0x1; //CAN1 into Reset  Mode 
+	AFMR=0x2; //accept all receiving messages(data/remote)
+	C2BTR=0x001C001D; //B125Kbps @ PLCK=60MHz
+	C2MOD=0x0; //CAN1 into Normal Mode
+}
+
+
+void can2_rx(CAN2_MSG *m1)
+{
+	while((C2GSR&0x1)==0);
+	m1->id=C2RID;
+	m1->dlc=(C2RFS>>16)&0xF;
+	m1->rtr=(C2RFS>>30)&0x1;
+	if(m1->rtr==0)//if data frame
+{
+		if(m1->id==0x20)
+			{
+			cgram_write(8);
+			LCD_CMD(0X80);
+			LCD_DATA(0);
+			led_blink();
+			}			
+		m1->byteA=C2RDA;
+		m1->byteB=C2RDB;
+	}
+	C2CMR=(1<<2);//free receiver buffer(imp)
+}
+//********************************************************************************************************************
+
+//CAN UART PROGRAM
+#include<lpc21xx.h>
+void uart0_init(unsigned int baud)
+{
+	PINSEL0|=0x5;
+	U0LCR=0x83;
+	switch(baud)
+{	
+case 115200:U0DLL=32;	break;//PCLK=60MHz
+case 921600:U0DLL=4;	break;
+		default:	U0DLL=32	;	
+	}
+	U0LCR=0x03;
+}
+void uart0_tx(unsigned char data)
+{
+	U0THR=data;
+	while((U0LSR&(1<<5))==0);
+}
+unsigned char uart0_rx(void)
+{
+	while((U0LSR&0x1)==0);
+	return U0RBR;
+}
+void uart0_tx_string(char *ptr)
+{
+while(*ptr!=0){
+	U0THR=*ptr;
+	while((U0LSR&(1<<5))==0);
+	ptr++;
+
+	}
+}
+void uart0_tx_hex(int num)
+{
+	char buf[10];
+	sprintf(buf,"%X",num);
+	uart0_tx_string(buf);
+}
+//********************************************************************************************************************
+
+//LED BLINKING PROGRAM
+void led_blink(void)
+{
+int i;
+for(i=0;i<10;i++)
+{
+IODIR0=LED1|LED2|LED3;
+IOCLR0=LED1|LED2|LED3;
+delay_ms(1000);
+IOSET0=LED1|LED2|LED3;
+	delay_ms(1000);
+}
+}
+
+//********************************************************************************************************************
+//VIPER PROGRAM
+#include<lpc21xx.h>
+#define M1 1<<10
+#define M2 1<<11
+void dcmotor(void)
+{
+IODIR0=M1|M2;
+IOSET0=M1|M2;
+IOSET0=M1;
+IOCLR0=M2;
+delay_s(20);
+IOSET0=M1|M2;
+}
+//********************************************************************************************************************
+
